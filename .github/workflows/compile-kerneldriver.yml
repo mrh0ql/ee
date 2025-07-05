@@ -1,0 +1,48 @@
+name: Build Kernel Driver
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Install WDK
+        run: choco install windows-driver-kit -y
+
+      - name: Restore NuGet packages
+        run: nuget restore MyDriver.sln
+
+      - name: Build with MSBuild
+        run: |
+          msbuild MyDriver.sln `
+            /t:Build `
+            /p:Configuration=Release `
+            /m
+
+      - name: Run clang-tidy analysis
+        run: |
+          if where clang-tidy; then
+            clang-tidy src/**/*.cpp --fix -- -I.
+          else
+            echo "clang-tidy not installed, skipping"
+          fi
+
+      - name: Archive driver package
+        uses: actions/upload-artifact@v3
+        with:
+          name: DriverPackage
+          path: |
+            build\Release\*.sys
+            driver.inf
+            loader.exe
+            README.md
