@@ -8,54 +8,59 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2019          # includes WDK out of the box :contentReference[oaicite:2]{index=2}
 
     steps:
       # 1. Check out your code
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4    # latest checkout action :contentReference[oaicite:3]{index=3}
 
-      # 2. Make MSBuild available
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1
-
-      # 3. Install the Windows Driver Kit (WDK 10)
-      - name: Install WDK 10 via Chocolatey
-        run: choco install windowsdriverkit10 -y
-
-      # 4. Restore any NuGet packages (including WDK NuGet if you use it)
-      - name: Restore NuGet packages
-        run: nuget restore MyDriver.sln
-
-      # 5. Build the solution with MSBuild in Release mode
-      - name: Build solution with MSBuild
+      # 2. Auto-detect your .sln file
+      - name: Find solution file
+        id: find_sln
         run: |
-          msbuild MyDriver.sln \
+          sln=$(ls *.sln | head -n1)
+          echo "Found solution: $sln"
+          echo "::set-output name=path::$sln"
+        shell: bash                # POSIX shell on Windows runner :contentReference[oaicite:4]{index=4}
+
+      # 3. Make MSBuild available
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1  # locates msbuild.exe :contentReference[oaicite:5]{index=5}
+
+      # 4. Restore NuGet packages for your solution
+      - name: Restore NuGet packages
+        run: nuget restore "${{ steps.find_sln.outputs.path }}"  # uses detected path :contentReference[oaicite:6]{index=6}
+
+      # 5. Build the solution in Release mode
+      - name: Build with MSBuild
+        run: |
+          msbuild "${{ steps.find_sln.outputs.path }}" \
             /t:Build \
             /p:Configuration=Release \
-            /m
+            /m                             # fast parallel build :contentReference[oaicite:7]{index=7}
 
-      # 6. Run clang-tidy static analysis (auto-fixes simple issues)
-      - name: Run clang-tidy static analysis
+      # 6. Run clang-tidy static analysis if available
+      - name: Run clang-tidy
         run: |
           if where clang-tidy; then
             clang-tidy src/**/*.cpp --fix -- -I.
           else
-            echo "clang-tidy not installed; skipping static analysis"
-          fi
+            echo "clang-tidy not found; skipping"
+          fi                              # graceful fallback :contentReference[oaicite:8]{index=8}
 
-      # 7. Package your driver artifacts into a ZIP
-      - name: Package driver artifacts
+      # 7. Package your driver artifacts
+      - name: Package artifacts
         run: |
           mkdir -p release-artifacts
           Compress-Archive -Path \
             build\Release\*.sys, driver.inf, loader.exe, README.md \
-            -DestinationPath release-artifacts/DriverPackage.zip
+            -DestinationPath release-artifacts/DriverPackage.zip  # manual zip :contentReference[oaicite:9]{index=9}
 
-      # 8. Upload the ZIP as a workflow artifact
+      # 8. Publish the ZIP as a workflow artifact
       - name: Upload driver package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4  # current GA version :contentReference[oaicite:10]{index=10}
         with:
           name: DriverPackage
           path: release-artifacts/DriverPackage.zip
-          retention-days: 7
+          retention-days: 7                # keep for a week :contentReference[oaicite:11]{index=11}
