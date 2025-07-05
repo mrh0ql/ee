@@ -2,53 +2,60 @@ name: Build Kernel Driver
 
 on:
   push:
-    branches: [ main ]                             # Trigger on pushes to main :contentReference[oaicite:0]{index=0}
+    branches: [ main ]
   pull_request:
-    branches: [ main ]                             # Trigger on PRs against main :contentReference[oaicite:1]{index=1}
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: windows-latest                        # Windows VM with Visual Studio & WDK :contentReference[oaicite:2]{index=2}
+    runs-on: windows-latest
 
     steps:
+      # 1. Check out your code
       - name: Checkout code
-        uses: actions/checkout@v4                   # Latest checkout action :contentReference[oaicite:3]{index=3}
+        uses: actions/checkout@v4
 
+      # 2. Make MSBuild available
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v1            # Adds MSBuild to PATH :contentReference[oaicite:4]{index=4}
+        uses: microsoft/setup-msbuild@v1
 
-      - name: Install Windows Driver Kit (WDK)
-        run: choco install windows-driver-kit -y     # Installs WDK 10.x for kernel builds :contentReference[oaicite:5]{index=5}
+      # 3. Install the Windows Driver Kit (WDK 10)
+      - name: Install WDK 10 via Chocolatey
+        run: choco install windowsdriverkit10 -y
 
+      # 4. Restore any NuGet packages (including WDK NuGet if you use it)
       - name: Restore NuGet packages
-        run: nuget restore MyDriver.sln              # Restore dependencies :contentReference[oaicite:6]{index=6}
+        run: nuget restore MyDriver.sln
 
+      # 5. Build the solution with MSBuild in Release mode
       - name: Build solution with MSBuild
         run: |
           msbuild MyDriver.sln \
             /t:Build \
             /p:Configuration=Release \
-            /m                                         # Parallel build :contentReference[oaicite:7]{index=7}
+            /m
 
+      # 6. Run clang-tidy static analysis (auto-fixes simple issues)
       - name: Run clang-tidy static analysis
         run: |
           if where clang-tidy; then
-            clang-tidy src/**/*.cpp --fix -- -I.     # Auto-fix simple issues :contentReference[oaicite:8]{index=8}
+            clang-tidy src/**/*.cpp --fix -- -I.
           else
-            echo "clang-tidy not installed, skipping"
-          fi                                         # Fallback if clang-tidy missing 
+            echo "clang-tidy not installed; skipping static analysis"
+          fi
 
+      # 7. Package your driver artifacts into a ZIP
       - name: Package driver artifacts
         run: |
           mkdir -p release-artifacts
           Compress-Archive -Path \
             build\Release\*.sys, driver.inf, loader.exe, README.md \
             -DestinationPath release-artifacts/DriverPackage.zip
-          echo "Packaged DriverPackage.zip"           # Manual zipping as alternative
 
+      # 8. Upload the ZIP as a workflow artifact
       - name: Upload driver package
-        uses: actions/upload-artifact@v4             # v4 is the supported version :contentReference[oaicite:10]{index=10}
+        uses: actions/upload-artifact@v4
         with:
           name: DriverPackage
-          path: release-artifacts/DriverPackage.zip  # Upload the ZIP :contentReference[oaicite:11]{index=11}
-          retention-days: 7                          # Optional: shorten retention :contentReference[oaicite:12]{index=12}
+          path: release-artifacts/DriverPackage.zip
+          retention-days: 7
